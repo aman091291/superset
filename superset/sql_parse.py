@@ -43,7 +43,6 @@ class CtasMethod(str, Enum):
     TABLE = "TABLE"
     VIEW = "VIEW"
 
-
 def _extract_limit_from_query(statement: TokenList) -> Optional[int]:
     """
     Extract limit clause from SQL statement.
@@ -51,7 +50,7 @@ def _extract_limit_from_query(statement: TokenList) -> Optional[int]:
     :param statement: SQL statement
     :return: Limit extracted from query, None if no limit present in statement
     """
-    idx, _ = statement.token_next_by(m=(Keyword, "LIMIT"))
+    idx, _ = statement.token_next_by(m=(Keyword, "LIMIT", "TOP"))
     if idx is not None:
         _, token = statement.token_next(idx=idx)
         if token:
@@ -61,7 +60,7 @@ def _extract_limit_from_query(statement: TokenList) -> Optional[int]:
                 idx, _ = token.token_next_by(m=(sqlparse.tokens.Punctuation, ","))
                 _, token = token.token_next(idx=idx)
             if token and token.ttype == sqlparse.tokens.Literal.Number.Integer:
-                return int(token.value)
+                return int(token.value)    
     return None
 
 
@@ -101,7 +100,7 @@ class Table:  # pylint: disable=too-few-public-methods
 
 
 class ParsedQuery:
-    def __init__(self, sql_statement: str, strip_comments: bool = False):
+    def __init__(self, sql_statement: str, strip_comments: bool = False, uri_type: str = None):
         if strip_comments:
             sql_statement = sqlparse.format(sql_statement, strip_comments=True)
 
@@ -343,3 +342,41 @@ class ParsedQuery:
         for i in statement.tokens:
             str_res += str(i.value)
         return str_res
+    
+    def set_or_update_query_limit_top(self, new_limit: int) -> str:
+        top_sel_keywork = set(["SELECT", "SEL"])
+        top_limit_keywork = set(["TOP", "SAMPLE"])
+        statement = self._parsed[0]
+
+        if not self._limit:
+            final_limit = new_limit
+        elif new_limit < self._limit:
+            final_limit = new_limit
+        else:
+            final_limit = self._limit
+
+        str_statement = str(statement)
+        str_statement = str_statement.replace('\n', ' ').replace('\r','')
+        tokens = str(str_statement).rstrip().split(' ')
+        tokens = list(filter(None, tokens))
+
+        next_remove_ind = False
+        new_tokens = []
+        for i in tokens:
+            if any(limitword in i.upper() for limitword in top_limit_keywork):
+                next_remove_ind = True
+            elif next_remove_ind and i.isdigit():
+                next_remove_ind = False
+            else:
+                new_tokens.append(i)
+                next_remove_ind = False
+
+        str_res = ""
+        for i in new_tokens:
+            str_res += i + " "
+            if any(selword in i.upper() for selword in top_sel_keywork):
+                str_res += "TOP " + str(final_limit) + " "
+        return str_res
+    
+    
+
