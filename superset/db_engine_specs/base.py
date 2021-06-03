@@ -610,9 +610,15 @@ class BaseEngineSpec:  # pylint: disable=too-many-public-methods
             )
             return database.compile_sqla_query(qry)
 
-        if cls.limit_method == LimitMethod.FORCE_LIMIT:
-            parsed_query = sql_parse.ParsedQuery(sql)
-            sql = parsed_query.set_or_update_query_limit(limit, force=force)
+        if LimitMethod.FORCE_LIMIT:
+            engine = cls.get_engine(database)
+            url_type = str(engine.url).split(':')[0]
+            parsed_query = sql_parse.ParsedQuery(sql, uri_type = url_type)
+            print(dir(engine.url))
+            if url_type in ['teradatasql','teradata']:
+                sql = parsed_query.set_or_update_query_limit_top(limit)
+            else:
+                sql = parsed_query.set_or_update_query_limit(limit)
 
         return sql
 
