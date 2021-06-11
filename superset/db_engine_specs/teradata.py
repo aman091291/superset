@@ -15,6 +15,8 @@
 # specific language governing permissions and limitations
 # under the License.
 from superset.db_engine_specs.base import BaseEngineSpec, LimitMethod
+from superset.sql_parse import ParsedQuery
+from typing import Dict, Optional, Type
 
 
 class TeradataEngineSpec(BaseEngineSpec):
@@ -22,7 +24,7 @@ class TeradataEngineSpec(BaseEngineSpec):
 
     engine = "teradata"
     engine_name = "Teradata"
-    limit_method = LimitMethod.WRAP_SQL
+    limit_method = LimitMethod.FORCE_LIMIT
     max_column_name_length = 30  # since 14.10 this is 128
 
     _time_grain_expressions = {
@@ -35,11 +37,50 @@ class TeradataEngineSpec(BaseEngineSpec):
         "P0.25Y": "TRUNC(CAST({col} as DATE), 'Q')",
         "P1Y": "TRUNC(CAST({col} as DATE), 'YEAR')",
     }
+    
+    @classmethod
+    def apply_limit_to_sql(
+        cls, sql: str, limit: int, database: "Database", force: bool = False
+    ) -> str:
+        """
+        Alters the SQL statement to apply a LIMIT clause
+        :param sql: SQL query
+        :param limit: Maximum number of rows to be returned by the query
+        :param database: Database instance
+        :return: SQL query with limit clause
+        """
+        # TODO: Fix circular import caused by importing Database
 
+        if LimitMethod.FORCE_LIMIT:
+            engine = cls.get_engine(database)
+            url_type = str(engine.url).split(':')[0]
+            parsed_query = sql_parse.ParsedQuery(sql, uri_type = url_type)
+            if url_type in ['teradatasql','teradata']:
+                sql = parsed_query.set_or_update_query_limit_top(limit)
+            else:
+                sql = parsed_query.set_or_update_query_limit(limit)
+        return {sql}
+        
+    @classmethod
+    def get_dbapi_mapped_exception(cls, exception: Exception) -> Exception:
+        engine = cls.get_engine(database)
+        url_type = str(engine.url).split(':')[0]
+        parsed_query = sql_parse.ParsedQuery(sql, uri_type = url_type)
+        if url_type in ['teradatasql','teradata']:
+            new_exception = cls.get_dbapi_exception_mapping().get(type(exception))
+        else:
+            return apply_limit_to_sql
+            
+        if not new_exception:
+            return exception
+        return new_exception(str(exception))
+            
+               
     @classmethod
     def epoch_to_dttm(cls) -> str:
         return (
             "CAST(((CAST(DATE '1970-01-01' + ({col} / 86400) AS TIMESTAMP(0) "
-            "AT 0)) AT 0) + (({col} MOD 86400) * INTERVAL '00:00:01' "
+            "AT 0)) AT 0) + (({col} MOD 86400) * INTERVAL '00:00:01' " 
             "HOUR TO SECOND) AS TIMESTAMP(0))"
         )
+
