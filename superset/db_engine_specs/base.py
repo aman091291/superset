@@ -266,7 +266,7 @@ class BaseEngineSpec:  # pylint: disable=too-many-public-methods
         ),
     )
     time_groupby_inline = False
-    limit_method = LimitMethod.FORCE_LIMIT
+    limit_method = LimitMethod.WRAP_SQL
     time_secondary_columns = False
     allows_joins = True
     allows_subqueries = True
